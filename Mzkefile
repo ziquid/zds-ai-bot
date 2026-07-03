@@ -2,5 +2,5 @@
 
 include mk/base.inc.mk
 
-MZKE_INCLUDES := defaults -$(CURDIR_SPACE_REPLACED)/$(CURDIR_NAME) all env features help
+MZKE_INCLUDES := defaults -$(CURDIR_SPACE_REPLACED)/app all env features help
 $(call F_INCLUDE_FILES,$(MZKE_INCLUDES))

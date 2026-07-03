@@ -1,7 +1,7 @@
 {
-  "name": "@zds-ai/cli",
-  "version": "0.2.0-alpha.5",
-  "description": "A multi-backend AI agent CLI supporting OpenAI, Anthropic, Grok, Ollama, and more.",
+  "name": "@zds-ai/bot",
+  "version": "0.0.1-alpha.1",
+  "description": "A multi-backend AI bot supporting OpenAI, Anthropic, Grok, Ollama, and more.",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -11,15 +11,7 @@
     }
   },
   "bin": {
-    "zai-cli": "dist/index.js",
-    "encode-speech.sh": "dist/bin/encode-speech.sh",
-    "extract-text.sh": "dist/bin/extract-text.sh",
-    "fastcaption.sh": "dist/bin/fastcaption.sh",
-    "generate_image_sd.sh": "dist/bin/generate_image_sd.sh",
-    "joycaption.sh": "dist/bin/joycaption.sh",
-    "read_xlsx.py": "dist/bin/read_xlsx.py",
-    "talking-agents.sh": "dist/bin/talking-agents.sh",
-    "video-agents.sh": "dist/bin/video-agents.sh"
+    "zds-bot": "dist/index.js"
   },
   "scripts": {
     "build": "tsc && mkdir -p dist/bin && cp -r src/bin/* dist/bin/",
@@ -39,7 +31,7 @@
     "agent",
     "ai",
     "arliai",
-    "cli",
+    "bot",
     "grok",
     "multi-backend",
     "nanogpt",
@@ -53,16 +45,16 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ziquid/zds-ai-cli.git"
+    "url": "git+https://github.com/ziquid/zds-ai-bot.git"
   },
   "bugs": {
-    "url": "https://github.com/ziquid/zds-ai-cli/issues"
+    "url": "https://github.com/ziquid/zds-ai-bot/issues"
   },
-  "homepage": "https://github.com/ziquid/zds-ai-cli#readme",
+  "homepage": "https://github.com/ziquid/zds-ai-bot#readme",
   "files": [
     "dist",
-    "README.md",
-    "LICENSE"
+    "docs/README.md",
+    "docs/LICENSE"
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
