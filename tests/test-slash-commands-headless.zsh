@@ -16,12 +16,12 @@ PASSED=0
 FAILED=0
 
 # Project root
-PROJECT_ROOT="/Volumes/DM 2T/Source/Agents/grok-cli"
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLI_PATH="$PROJECT_ROOT/dist/index.js"
 
 # Check if built
 if [[ ! -f "$CLI_PATH" ]]; then
-  echo "${RED}Error: Project not built. Run 'bun run build' first.${NC}"
+  echo "${RED}Error: project not built -- run 'mzke build' first${NC}"
   exit 1
 fi
 
