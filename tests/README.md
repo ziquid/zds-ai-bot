@@ -5,13 +5,15 @@ This directory contains test scripts for validating grok-cli features.
 ## Test Scripts
 
 ### temperature-feature-test.zsh
+
 **Purpose:** Automated functional testing of temperature configuration feature
 **Coverage:** CLI temperature flags, validation, default behavior, persistence
 
 **Usage:**
-```bash
-cd /Volumes/DM 2T/Source/Agents/grok-cli
-zsh tests/temperature-feature-test.zsh
+
+```sh
+cd <project root>
+tests/temperature-feature-test.zsh
 ```
 
 **Test Cases:**
@@ -21,35 +23,39 @@ zsh tests/temperature-feature-test.zsh
 - State persistence validation
 
 ### test-venice.js
+
 **Purpose:** Validate Venice AI backend connection (bug fix verification)
 **Coverage:** Tests that Venice AI no longer receives unsupported 'think' parameter
 
 **Usage:**
-```bash
-cd /Volumes/DM 2T/Source/Agents/grok-cli
-bun tests/test-venice.js
+
+```sh
+cd <project root>
+tests/test-venice.js
 ```
 
 **Requirements:**
 - VENICE_API_KEY environment variable must be set
-- Project must be built (`bun run build`)
+- Project must be built (`mzke build`)
 
 **Test Cases:**
 - Venice AI connection without HTTP 400 errors
 - Basic message exchange with Venice backend
 
 ### test-duplicate-json.ts
+
 **Purpose:** Unit test for duplicate JSON handling in tool call arguments (bug fix verification)
 **Coverage:** Tests that concatenated/duplicated JSON objects are properly handled
 
 **Usage:**
-```bash
-cd /Volumes/DM 2T/Source/Agents/grok-cli
-bun tests/test-duplicate-json.ts
+
+```sh
+cd <project root>
+tests/test-duplicate-json.ts
 ```
 
 **Requirements:**
-- Project must be built (`bun run build`)
+- Project must be built (`mzke build`)
 
 **Test Cases:**
 - Exact duplicate objects
@@ -61,17 +67,19 @@ bun tests/test-duplicate-json.ts
 - Empty object duplicated
 
 ### test-slash-commands-headless.zsh
+
 **Purpose:** Automated functional testing of slash commands in headless and no-ink modes (bug fix verification)
 **Coverage:** Tests that slash commands work correctly in both `-p` (headless) and `--no-ink` (interactive plain) modes
 
 **Usage:**
-```bash
-cd /Volumes/DM 2T/Source/Agents/grok-cli
-zsh tests/test-slash-commands-headless.zsh
+
+```sh
+cd <project root>
+tests/test-slash-commands-headless.zsh
 ```
 
 **Requirements:**
-- Project must be built (`bun run build`)
+- Project must be built (`mzke build`)
 
 **Test Cases:**
 - `/help` command in headless mode
@@ -85,7 +93,31 @@ zsh tests/test-slash-commands-headless.zsh
 - `/context view` in headless mode (error expected)
 - `/context edit` in headless mode (error expected)
 
+### test-headless-default-mode.zsh
+
+**Purpose:** Verify the headless-by-default entry-point routing added when the Ink TUI was removed
+**Coverage:** No-flags default routes to headless mode, `-p` routes to headless, `--interactive`/`--no-ink` route to the plain-console REPL, and `-p` takes precedence over `--interactive` when both are given
+
+**Usage:**
+
+```sh
+cd <project root>
+tests/test-headless-default-mode.zsh
+```
+
+**Requirements:**
+- Project must be built (`mzke build`)
+- No real API key needed -- uses a placeholder value since `validateApiKey()` only checks non-emptiness, and asserts on synchronous, network-free error messages/output
+
+**Test Cases:**
+- Default (no flags) with empty stdin hits the headless "no prompt" error
+- `-p <prompt>` with no auto-approve flags reaches the headless approval-settings check
+- `--interactive` with empty stdin enters the plain-console REPL (not headless)
+- `--no-ink` behaves identically to `--interactive` (alias)
+- `-p` forces headless even when `--interactive` is also passed
+
 ### test-tool-validation.md
+
 **Purpose:** Documentation of tool argument validation feature (bug fix documentation)
 **Coverage:** Explains how tool arguments are validated against schemas to prevent Ollama 400 errors
 

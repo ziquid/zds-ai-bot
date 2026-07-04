@@ -1,14 +1,9 @@
 #!/usr/bin/env node
 
-// No global output suppression - let UI render normally
-
-import React from "react";
-import { render } from "ink";
 import { program } from "commander";
 import * as dotenv from "dotenv";
 import { LLMAgent, ChatEntry } from "./agent/llm-agent.js";
 import { TaskQuitSignal } from "./tools/task-management-tool.js";
-import ChatInterface from "./ui/components/chat-interface.js";
 import { getSettingsManager } from "./utils/settings-manager.js";
 import { ConfirmationService } from "./utils/confirmation-service.js";
 import { ChatHistoryManager } from "./utils/chat-history-manager.js";
@@ -545,8 +540,12 @@ program
     "path to context persistence file (default: ~/.zds-ai/context.json)"
   )
   .option(
+    '--interactive',
+    'use the interactive plain-console REPL instead of headless mode (alias for --no-ink; useful for debugging)'
+  )
+  .option(
     '--no-ink',
-    'disable Ink UI and use plain console input/output'
+    'alias for --interactive (legacy flag name; use the interactive plain-console REPL)'
   )
   .option(
     "--debug-log <file>",
@@ -633,8 +632,29 @@ program
         ChatHistoryManager.setCustomHistoryPath(options.context);
       }
 
-      // Headless mode: process prompt and exit
-      if (options.prompt !== undefined) {
+      // Support variadic positional arguments for multi-word initial message
+      let messageArray = Array.isArray(message) ? message : (message ? [message] : []);
+
+      // Trim all elements (Commander may add spaces)
+      messageArray = messageArray.map(arg => arg.trim());
+
+      // Check if --interactive or --no-ink landed in the message array (happens when
+      // the flag comes after the message due to variadic args -- Commander doesn't
+      // always parse it as a flag in that position)
+      if (messageArray.includes('--interactive') || messageArray.includes('--no-ink')) {
+        options.interactive = true;
+      }
+
+      // Filter out any CLI flags from message array (in case they leaked through)
+      messageArray = messageArray.filter(arg => !arg.startsWith('-'));
+
+      // --interactive is an alias for --no-ink: both request the plain-console REPL.
+      // -p/--prompt always forces headless mode regardless of --interactive/--no-ink,
+      // matching zai-cli's existing headless precedence.
+      const wantsInteractive = options.interactive === true || options.ink === false;
+
+      // Headless mode (default): process a prompt (from -p, else STDIN) and exit
+      if (options.prompt !== undefined || !wantsInteractive) {
         let prompt = typeof options.prompt === 'string' ? options.prompt : '';
 
         // If prompt is empty or just whitespace, read from stdin
@@ -692,7 +712,7 @@ program
         return;
       }
 
-      // Interactive mode: launch UI
+      // Interactive mode: launch the plain-console REPL
 
       // Create agent for interactive mode only
       const { createLLMAgent } = await import('./utils/startup-hook.js');
@@ -722,30 +742,10 @@ program
 
       console.log("⚡ Starting ZDS AI Agents CLI...\n");
 
-      // Support variadic positional arguments for multi-word initial message
-      let messageArray = Array.isArray(message) ? message : (message ? [message] : []);
-
-      // Trim all elements (Commander may add spaces)
-      messageArray = messageArray.map(arg => arg.trim());
-
-      // Check if --no-ink is in the message array (happens when flag comes after message due to variadic args)
-      const hasNoInkInMessage = messageArray.includes('--no-ink');
-
-      // If --no-ink was in message array, manually set option (Commander didn't parse it as flag)
-      if (hasNoInkInMessage) {
-        options.ink = false;
-      }
-
-      // Filter out any CLI flags from message array (in case they leaked through)
-      messageArray = messageArray.filter(arg => !arg.startsWith('-'));
-
-      // Join message
+      // Join message (messageArray was computed above, before the headless/interactive gate)
       const initialMessage = messageArray.join(" ").trim();
-   // Optimize console output for plain mode to reduce flickering
 
-      if (!options.ink) {
-        // Plain console mode
-        (global as any).isInkMode = false;
+      {
         const prompts = await import('prompts');
 
         // Load chat history if not a fresh session
@@ -928,13 +928,12 @@ program
             const slashCommandHandled = await processSlashCommand(input, {
               agent,
               addChatEntry: (entry) => {
-                // In no-ink mode, output directly to console
+                // Plain-console mode: output directly to console
                 if (entry.type === 'assistant' || entry.type === 'system') {
                   console.log(entry.content);
                 }
               },
-              isHeadless: false,  // no-ink is interactive, not headless
-              isInkMode: false    // plain console mode
+              isHeadless: false,  // interactive REPL, not headless
             });
 
             if (slashCommandHandled) {
@@ -1219,20 +1218,6 @@ program
         // Plain console mode loop exited (shouldn't happen, but just in case)
         return;
       }
-
-      // Ink mode (GUI) - only reached if options.ink is true
-      // Clear terminal screen for ink mode
-      process.stdout.write('\x1b[2J\x1b[0f');
-
-      const inkInstance = render(React.createElement(ChatInterface, {
-        agent,
-        initialMessage,
-        fresh: options.fresh
-      }));
-
-      // Store Ink instance globally so components can unmount/remount for external processes
-      (global as any).inkInstance = inkInstance;
-      (global as any).isInkMode = true;
     } catch (error: any) {
       console.error("❌ Error initializing ZDS AI CLI:", error.message);
       process.exit(1);

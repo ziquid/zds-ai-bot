@@ -14,11 +14,9 @@ export const BUILT_IN_COMMANDS = `Built-in Commands:
   /context edit - Edit context JSON file (opens in $EDITOR)
   /context reload - Reload context from file immediately (no confirmation)
   /help       - Show this help
-  /ink        - Switch to Ink UI mode (restart required)
   /introspect - Introspect tools and environment
   /models     - Switch between available models
   /mood <text> [color] - Set current mood
-  /no-ink     - Switch to plain console mode (restart required)
   /persona <text> [color] - Set current persona
   /rephrase [text] - Request rephrasing of last response
                      Optional text prefills assistant's new response
@@ -87,7 +85,6 @@ export interface SlashCommandContext {
   }) => void;
   setTotalTokenUsage?: (updater: number | ((prev: number) => number)) => void;
   isHeadless?: boolean;
-  isInkMode?: boolean;
 }
 
 /**
@@ -98,7 +95,7 @@ export async function processSlashCommand(
   input: string,
   context: SlashCommandContext
 ): Promise<boolean> {
-  const { agent, addChatEntry, clearInput, resetHistory, setProcessingStates, setTotalTokenUsage, isHeadless, isInkMode } = context;
+  const { agent, addChatEntry, clearInput, resetHistory, setProcessingStates, setTotalTokenUsage, isHeadless } = context;
   const trimmedInput = input.trim();
 
   // !<command> - execute shell command in interactive modes only
@@ -287,56 +284,6 @@ export async function processSlashCommand(
     // Call the restart tool which exits with code 51
     await agent["restartTool"].restart();
     return true; // This line won't be reached but TypeScript needs it
-  }
-
-  // /ink command - switch to Ink UI mode
-  if (trimmedInput === "/ink") {
-    if (isHeadless) {
-      console.error("ERROR: /ink requires interactive mode");
-      return true;
-    }
-
-    // Check if already in ink mode
-    if (isInkMode) {
-      if (clearInput) clearInput();
-      return true;
-    }
-
-    const switchEntry: ChatEntry = {
-      type: "assistant",
-      content: "Switching to Ink UI mode...",
-      timestamp: new Date(),
-    };
-    addChatEntry(switchEntry);
-
-    // Exit with code 52 - wrapper will add --no-ink=false or remove --no-ink and restart
-    process.exit(52);
-    return true;
-  }
-
-  // /no-ink command - switch to plain console mode
-  if (trimmedInput === "/no-ink") {
-    if (isHeadless) {
-      console.error("ERROR: /no-ink requires interactive mode");
-      return true;
-    }
-
-    // Check if already in plain console mode
-    if (!isInkMode) {
-      if (clearInput) clearInput();
-      return true;
-    }
-
-    const switchEntry: ChatEntry = {
-      type: "assistant",
-      content: "Switching to plain console mode...",
-      timestamp: new Date(),
-    };
-    addChatEntry(switchEntry);
-
-    // Exit with code 53 - wrapper will add --no-ink and restart
-    process.exit(53);
-    return true;
   }
 
   // /exit command
