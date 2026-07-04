@@ -4,7 +4,6 @@ import { program } from "commander";
 import * as dotenv from "dotenv";
 import { LLMAgent, ChatEntry } from "./agent/llm-agent.js";
 import { TaskQuitSignal } from "./tools/task-management-tool.js";
-import { getSettingsManager } from "./utils/settings-manager.js";
 import { ConfirmationService } from "./utils/confirmation-service.js";
 import { ChatHistoryManager } from "./utils/chat-history-manager.js";
 import { createMCPCommand } from "./commands/mcp.js";
@@ -105,37 +104,6 @@ process.on("unhandledRejection", (reason, promise) => {
 process.on("exit", () => {
   restoreTerminal();
 });
-
-// Ensure user settings are initialized
-function ensureUserSettingsDirectory(): void {
-  try {
-    const manager = getSettingsManager();
-    // This will create default settings if they don't exist
-    manager.loadUserSettings();
-  } catch (error) {
-    // Silently ignore errors during setup
-  }
-}
-
-// Save command line API key to user settings file (baseURL is not saved - it's for override only)
-async function saveCommandLineSettings(
-  apiKey?: string
-): Promise<void> {
-  try {
-    const manager = getSettingsManager();
-
-    // Update with command line values
-    if (apiKey) {
-      manager.updateUserSetting("apiKey", apiKey);
-      console.log("✅ API key saved to ~/.grok/user-settings.json");
-    }
-  } catch (error) {
-    console.warn(
-      "⚠️ Could not save settings to file:",
-      error instanceof Error ? error.message : "Unknown error"
-    );
-  }
-}
 
 // Show all available tools (internal and MCP)
 async function showAllTools(debugLogFile?: string): Promise<void> {
@@ -559,10 +527,6 @@ program
     "--show-context-stats",
     "display token usage stats for the specified context file and exit"
   )
-  .option(
-    "-s, --settings <file>",
-    "path to user settings file (default: ~/.zds-ai/cli-settings.json)"
-  )
   .argument("[message...]", "Initial message to send to the AI")
   .allowExcessArguments(true)
   .action(async (message, options) => {
@@ -576,12 +540,6 @@ program
         );
         process.exit(1);
       }
-    }
-
-    // Set custom user settings path if provided
-    if (options.settings) {
-      const { SettingsManager } = await import('./utils/settings-manager.js');
-      SettingsManager.setCustomUserSettingsPath(options.settings);
     }
 
     // Handle --show-all-tools flag
@@ -621,10 +579,8 @@ program
         process.exit(1);
       }
 
-      // Note: API key from --api-key flag is NOT saved to user settings
-      // It's only used for this session. Use the interactive prompt to save it permanently.
-
-      ensureUserSettingsDirectory();
+      // Note: API key from --api-key flag is used for this session only.
+      // Config files are read-only from zds-bot's perspective (see #27).
 
       // Set custom context file path if provided
       if (options.context) {

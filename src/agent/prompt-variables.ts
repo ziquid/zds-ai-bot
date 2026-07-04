@@ -565,9 +565,8 @@ const INTRINSIC_VARS: VariableDef[] = [
 ];
 
 /**
- * Load variable definitions from ~/.zds-ai/cli-vars.yml via SettingsManager
+ * Load variable definitions from the tiered bot-vars.yml (see config-tiers.ts) via SettingsManager
  * Lazy-loaded to avoid creating SettingsManager singleton at import time
- * (which would ignore any custom settings path set later)
  */
 let _externalVarsLoaded = false;
 let _externalVars: VariableDef[] = [];

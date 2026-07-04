@@ -86,12 +86,12 @@ export function getBaseURL(
  * 5. Default value
  *
  * @param explicitModel - Model passed via command-line argument (highest priority)
- * @param defaultModel - Default model to use if none found (default: grok-code-fast-1)
+ * @param defaultModel - Default model to use if none found (default: grok-4-3)
  * @returns Model name
  */
 export function getModel(
   explicitModel?: string,
-  defaultModel: string = "grok-code-fast-1"
+  defaultModel: string = "grok-4-3"
 ): string {
   // Priority 1: Explicit model from command-line argument
   if (explicitModel) {

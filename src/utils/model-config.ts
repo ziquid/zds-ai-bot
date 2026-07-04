@@ -39,18 +39,3 @@ export function getDefaultModels(): string[] {
   return manager.getAvailableModels();
 }
 
-/**
- * Update the current model in project settings
- */
-export function updateCurrentModel(modelName: string): void {
-  const manager = getSettingsManager();
-  manager.setCurrentModel(modelName);
-}
-
-/**
- * Update the user's default model preference
- */
-export function updateDefaultModel(modelName: string): void {
-  const manager = getSettingsManager();
-  manager.updateUserSetting('defaultModel', modelName);
-}

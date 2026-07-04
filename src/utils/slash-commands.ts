@@ -439,12 +439,6 @@ export async function processSlashCommand(
     if (modelNames.includes(modelArg)) {
       agent.setModel(modelArg);
 
-      // Update project current model if not headless
-      if (!isHeadless) {
-        const { updateCurrentModel } = await import("./model-config.js");
-        updateCurrentModel(modelArg);
-      }
-
       const confirmText = `✓ Switched to model: ${modelArg}`;
 
       if (isHeadless) {

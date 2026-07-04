@@ -1,16 +1,17 @@
 import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
 import * as yaml from "js-yaml";
+import { loadTieredJsonConfig, resolveConfigTierPaths } from "./config-tiers.js";
 
 /**
- * User-level settings stored in ~/.grok/user-settings.json
- * These are global settings that apply across all projects
+ * Unified bot settings, merged per-keyword across all config tiers (see config-tiers.ts).
+ * Replaces the old UserSettings/ProjectSettings split -- project-dir vs. user-dir is now
+ * just two of the seven tiers in the same merge, not two separately-shaped objects.
  */
-export interface UserSettings {
+export interface BotSettings {
   apiKey?: string; // Grok API key
   baseURL?: string; // API base URL
   defaultModel?: string; // User's preferred default model
+  model?: string; // Current/project model override
   models?: string[]; // Available models list
   temperature?: number; // Default temperature for API requests (0.0-2.0, default: 0.7)
   maxTokens?: number; // Default max tokens for API responses (no upper limit, default: undefined = API default)
@@ -31,79 +32,35 @@ export interface UserSettings {
   contextViewHelperGui?: string; // Helper for viewing context in GUI mode (default: open on macOS, xdg-open on Linux)
   contextEditHelper?: string; // Helper for editing context in text mode (default: $EDITOR or nano)
   contextEditHelperGui?: string; // Helper for editing context in GUI mode (default: open -e on macOS, xdg-open on Linux)
-  mcpServers?: Record<string, any>; // MCP server configurations (fallback from user settings)
+  mcpServers?: Record<string, any>; // MCP server configurations (merged in from bot-mcp.json tiers)
   mcpToolDenylist?: string[]; // List of MCP tool names to exclude from the LLM tool list
 }
 
-/**
- * Project-level settings stored in .grok/settings.json
- * These are project-specific settings
- */
-export interface ProjectSettings {
-  model?: string; // Current model for this project
-  mcpServers?: Record<string, any>; // MCP server configurations
-  mcpToolDenylist?: string[]; // List of MCP tool names to exclude from the LLM tool list
-}
+// Kept as aliases so existing call sites importing UserSettings/ProjectSettings keep working.
+export type UserSettings = BotSettings;
+export type ProjectSettings = BotSettings;
+
+const SETTINGS_FILENAME = "bot-settings.json";
+const MCP_FILENAME = "bot-mcp.json";
 
 /**
- * Default values for user settings
- * Note: baseURL and defaultModel are typically set by environment variables or helpers
+ * Defaults for bot settings, merged in below every tier (i.e. the true "tier 0" floor).
  */
-const DEFAULT_USER_SETTINGS: Partial<UserSettings> = {
+const DEFAULT_SETTINGS: Partial<BotSettings> = {
   baseURL: "https://api.x.ai/v1", // Grok default
-  defaultModel: "grok-code-fast-1",
-  models: ["grok-code-fast-1", "grok-4-1-latest", "grok-3-latest", "grok-3-fast", "grok-3-mini-fast",],
+  defaultModel: "grok-4-3",
+  models: ["grok-4-3", "grok-code-fast-1", "grok-4-1-latest", "grok-3-latest", "grok-3-fast", "grok-3-mini-fast"],
+  model: "grok-4-3",
 };
 
 /**
- * Default values for project settings
- */
-const DEFAULT_PROJECT_SETTINGS: Partial<ProjectSettings> = {
-  model: "grok-code-fast-1",
-};
-
-/**
- * Unified settings manager that handles both user-level and project-level settings
+ * Unified settings manager backed by the multi-tiered config system (see config-tiers.ts):
+ * defaults -> global -> bot/agent config dir (file-level) -> project -> task -> pwd -> config-force.
  */
 export class SettingsManager {
   private static instance: SettingsManager;
-  private static customUserSettingsPath: string | null = null;
 
-  private userSettingsPath: string;
-  private userMcpServersPath: string;
-  private userVarsPath: string;
-  private projectSettingsPath: string;
-  private projectMcpServersPath: string;
-
-  /**
-   * Set a custom user settings file path (must be called before getInstance)
-   */
-  static setCustomUserSettingsPath(filePath: string): void {
-    SettingsManager.customUserSettingsPath = filePath;
-  }
-
-  private constructor() {
-    // User settings path: custom or ~/.zds-ai/cli-settings.json
-    this.userSettingsPath = SettingsManager.customUserSettingsPath || path.join(os.homedir(), ".zds-ai", "cli-settings.json");
-
-    // Derive config home from the settings file's directory, not os.homedir().
-    // When invoked with -s /agent-home/.zds-ai/cli-settings.json (e.g. by sociobot
-    // running as a different user), HOME points to the wrong user.  The settings
-    // file path is the authoritative source for where mcp.json and cli-vars.yml live.
-    const configHomeDir = path.dirname(this.userSettingsPath);
-
-    // User mcp servers path: <config-home>/mcp.json
-    this.userMcpServersPath = path.join(configHomeDir, "mcp.json");
-
-    // User variable definitions path: <config-home>/cli-vars.yml
-    this.userVarsPath = path.join(configHomeDir, "cli-vars.yml");
-
-    // Project settings path: .zds-ai/project-settings.json (in current working directory)
-    this.projectSettingsPath = path.join(process.cwd(), ".zds-ai", "project-settings.json");
-
-    // Project mcp servers path: .zds-ai/project-mcp.json (in current working directory)
-    this.projectMcpServersPath = path.join(process.cwd(), ".zds-ai", "project-mcp.json");
-  }
+  private constructor() {}
 
   /**
    * Get singleton instance
@@ -116,250 +73,80 @@ export class SettingsManager {
   }
 
   /**
-   * Load user settings from appropriate files
+   * Load the fully tier-merged bot settings, including mcpServers merged in from the
+   * bot-mcp.json tiers.
    */
-  public loadUserSettings(): UserSettings {
-    try {
-      if (!fs.existsSync(this.userSettingsPath)) {
-        // Create default user settings if file doesn't exist
-        this.saveUserSettings(DEFAULT_USER_SETTINGS);
-        return {...DEFAULT_USER_SETTINGS};
-      }
+  public loadSettings(): BotSettings {
+    const settings = loadTieredJsonConfig<BotSettings>(SETTINGS_FILENAME);
+    const mcpConfig = loadTieredJsonConfig<{ mcpServers?: Record<string, any> }>(MCP_FILENAME);
 
-      const content = fs.readFileSync(this.userSettingsPath, "utf-8");
-      const settings = JSON.parse(content);
-
-      // Load and merge mcpServers from separate files
-      let userMcpServers: Record<string, any> = {};
-      let projectMcpServers: Record<string, any> = {};
-
-      // Load user MCP servers
-      if (fs.existsSync(this.userMcpServersPath)) {
-        try {
-          const mcpContent = fs.readFileSync(this.userMcpServersPath, "utf-8");
-          const mcpConfig = JSON.parse(mcpContent);
-          userMcpServers = mcpConfig.mcpServers || {};
-        } catch (error) {
-          console.warn(`Failed to load user MCP config from ${this.userMcpServersPath}:`, error instanceof Error ? error.message : "Unknown error");
-        }
-      }
-
-      // Load project MCP servers
-      if (fs.existsSync(this.projectMcpServersPath)) {
-        try {
-          const mcpContent = fs.readFileSync(this.projectMcpServersPath, "utf-8");
-          const mcpConfig = JSON.parse(mcpContent);
-          projectMcpServers = mcpConfig.mcpServers || {};
-        } catch (error) {
-          console.warn(`Failed to load project MCP config from ${this.projectMcpServersPath}:`, error instanceof Error ? error.message : "Unknown error");
-        }
-      }
-
-      // Merge user and project MCP servers, with project overriding user
-      settings.mcpServers = {...userMcpServers, ...projectMcpServers};
-
-      // Merge with defaults to ensure all required fields exist
-      return {...DEFAULT_USER_SETTINGS, ...settings};
-    } catch (error) {
-      console.warn("Failed to load user settings:", error instanceof Error ? error.message : "Unknown error");
-      return {...DEFAULT_USER_SETTINGS};
-    }
+    return {
+      ...DEFAULT_SETTINGS,
+      ...settings,
+      mcpServers: mcpConfig.mcpServers,
+    };
   }
 
   /**
-   * Save user settings to ~/.grok/user-settings.json
-   * mcpServers is saved to ~/.zds-ai/mcp.json separately
+   * Kept for existing call sites -- returns the same tier-merged settings as loadSettings().
+   * There is no longer a separate "user" vs "project" settings shape; project/task/pwd dirs
+   * are just tiers in the same merge.
    */
-  public saveUserSettings(settings: Partial<UserSettings>): void {
-    try {
-      this.ensureDirectoryExists(this.userSettingsPath);
-
-      // Read existing settings directly to avoid recursion
-      let existingSettings: UserSettings = {...DEFAULT_USER_SETTINGS};
-      if (fs.existsSync(this.userSettingsPath)) {
-        try {
-          const content = fs.readFileSync(this.userSettingsPath, "utf-8");
-          const parsed = JSON.parse(content);
-          existingSettings = {...DEFAULT_USER_SETTINGS, ...parsed};
-        } catch (error) {
-          // If file is corrupted, use defaults
-          console.warn("Corrupted user settings file, using defaults");
-        }
-      }
-
-      const mergedSettings = {...existingSettings, ...settings};
-
-      // Extract mcpServers and save separately
-      if (mergedSettings.mcpServers !== undefined) {
-        const mcpServers = mergedSettings.mcpServers;
-
-        // Save MCP servers to separate file
-        this.ensureDirectoryExists(this.userMcpServersPath);
-        const mcpConfig = { mcpServers };
-        fs.writeFileSync(this.userMcpServersPath, JSON.stringify(mcpConfig, null, 2), { mode: 0o600 });
-      }
-
-      // Remove mcpServers from settings before saving to main file
-      const settingsToSave = {...mergedSettings};
-      delete settingsToSave.mcpServers;
-
-      fs.writeFileSync(this.userSettingsPath, JSON.stringify(settingsToSave, null, 2), {mode: 0o600} // Secure permissions for API key
-      );
-    } catch (error) {
-      console.error("Failed to save user settings:", error instanceof Error ? error.message : "Unknown error");
-      throw error;
-    }
+  public loadUserSettings(): BotSettings {
+    return this.loadSettings();
   }
 
   /**
-   * Update a specific user setting
+   * Kept for existing call sites -- returns the same tier-merged settings as loadSettings().
    */
-  public updateUserSetting<K extends keyof UserSettings>(key: K, value: UserSettings[K]): void {
-    const settings = {[key]: value} as Partial<UserSettings>;
-    this.saveUserSettings(settings);
+  public loadProjectSettings(): BotSettings {
+    return this.loadSettings();
   }
 
   /**
-   * Get a specific user setting
+   * Get a specific setting from the fully tier-merged settings
    */
-  public getUserSetting<K extends keyof UserSettings>(key: K): UserSettings[K] {
-    const settings = this.loadUserSettings();
-    return settings[key];
+  public getUserSetting<K extends keyof BotSettings>(key: K): BotSettings[K] {
+    return this.loadSettings()[key];
   }
 
   /**
-   * Load project settings from .zds-ai/project-settings.json
-   * mcpServers is loaded from .zds-ai/project-mcp.json if it exists
+   * Get a specific setting from the fully tier-merged settings (alias of getUserSetting --
+   * there's no longer a distinct project-only view, project dir is just a tier)
    */
-  public loadProjectSettings(): ProjectSettings {
-    try {
-      let settings: ProjectSettings = {...DEFAULT_PROJECT_SETTINGS};
-
-      // Load main project settings
-      if (fs.existsSync(this.projectSettingsPath)) {
-        const content = fs.readFileSync(this.projectSettingsPath, "utf-8");
-        if (content.trim()) {
-          const parsed = JSON.parse(content);
-          settings = {...DEFAULT_PROJECT_SETTINGS, ...parsed};
-        }
-      }
-
-      // Load project MCP servers from separate file
-      if (fs.existsSync(this.projectMcpServersPath)) {
-        try {
-          const mcpContent = fs.readFileSync(this.projectMcpServersPath, "utf-8");
-          const mcpConfig = JSON.parse(mcpContent);
-          settings.mcpServers = mcpConfig.mcpServers || {};
-        } catch (error) {
-          console.warn(`Failed to load project MCP config from ${this.projectMcpServersPath}:`, error instanceof Error ? error.message : "Unknown error");
-        }
-      }
-
-      return settings;
-    } catch (error) {
-      console.warn("Failed to load project settings:", error instanceof Error ? error.message : "Unknown error");
-      return {...DEFAULT_PROJECT_SETTINGS};
-    }
-  }
-
-  /**
-   * Save project settings to .zds-ai/project-settings.json
-   * mcpServers is saved to .zds-ai/project-mcp.json separately
-   */
-  public saveProjectSettings(settings: Partial<ProjectSettings>): void {
-    try {
-      this.ensureDirectoryExists(this.projectSettingsPath);
-
-      // Read existing settings
-      let existingSettings: ProjectSettings = {...DEFAULT_PROJECT_SETTINGS};
-      if (fs.existsSync(this.projectSettingsPath)) {
-        try {
-          const content = fs.readFileSync(this.projectSettingsPath, "utf-8");
-          if (content.trim()) {
-            const parsed = JSON.parse(content);
-            existingSettings = {...DEFAULT_PROJECT_SETTINGS, ...parsed};
-          }
-        } catch (error) {
-          console.warn("Corrupted project settings file, using defaults");
-        }
-      }
-
-      const mergedSettings = {...existingSettings, ...settings};
-
-      // Extract mcpServers and save separately
-      if (mergedSettings.mcpServers !== undefined) {
-        const mcpServers = mergedSettings.mcpServers;
-
-        // Save MCP servers to separate file
-        this.ensureDirectoryExists(this.projectMcpServersPath);
-        const mcpConfig = { mcpServers };
-        fs.writeFileSync(this.projectMcpServersPath, JSON.stringify(mcpConfig, null, 2), { mode: 0o600 });
-      }
-
-      // Remove mcpServers from settings before saving to main file
-      const settingsToSave = {...mergedSettings};
-      delete settingsToSave.mcpServers;
-
-      fs.writeFileSync(this.projectSettingsPath, JSON.stringify(settingsToSave, null, 2), { mode: 0o600 });
-    } catch (error) {
-      console.error("Failed to save project settings:", error instanceof Error ? error.message : "Unknown error");
-      throw error;
-    }
-  }
-
-  /**
-   * Update a specific project setting
-   */
-  public updateProjectSetting<K extends keyof ProjectSettings>(key: K, value: ProjectSettings[K]): void {
-    const settings = {[key]: value} as Partial<ProjectSettings>;
-    this.saveProjectSettings(settings);
-  }
-
-  /**
-   * Get a specific project setting
-   */
-  public getProjectSetting<K extends keyof ProjectSettings>(key: K): ProjectSettings[K] {
-    const settings = this.loadProjectSettings();
-    return settings[key];
+  public getProjectSetting<K extends keyof BotSettings>(key: K): BotSettings[K] {
+    return this.loadSettings()[key];
   }
 
   /**
    * Get the current model with proper fallback logic:
-   * 1. Project-specific model setting
-   * 2. User's default model
-   * 3. System default
+   * 1.  Configured model (any tier; project/task/pwd tiers naturally take precedence via merge order)
+   * 2.  User's default model
+   * 3.  System default
    */
   public getCurrentModel(): string {
-    const projectModel = this.getProjectSetting("model");
-    if (projectModel) {
-      return projectModel;
+    const settings = this.loadSettings();
+    if (settings.model) {
+      return settings.model;
     }
 
-    const userDefaultModel = this.getUserSetting("defaultModel");
-    if (userDefaultModel) {
-      return userDefaultModel;
+    if (settings.defaultModel) {
+      return settings.defaultModel;
     }
 
-    return DEFAULT_PROJECT_SETTINGS.model || "grok-code-fast-1";
+    return DEFAULT_SETTINGS.model || "grok-4-3";
   }
 
   /**
-   * Set the current model for the project
-   */
-  public setCurrentModel(model: string): void {
-    this.updateProjectSetting("model", model);
-  }
-
-  /**
-   * Get available models list from user settings
+   * Get available models list
    */
   public getAvailableModels(): string[] {
     const models = this.getUserSetting("models");
-    return models || DEFAULT_USER_SETTINGS.models || [];
+    return models || DEFAULT_SETTINGS.models || [];
   }
 
   /**
-   * Get API key from user settings or environment
+   * Get API key from settings or environment
    */
   public getApiKey(): string | undefined {
     // First check environment variable
@@ -368,26 +155,26 @@ export class SettingsManager {
       return envApiKey;
     }
 
-    // Then check user settings
+    // Then check tiered settings
     return this.getUserSetting("apiKey");
   }
 
   /**
-   * Get startup hook command from user settings
+   * Get startup hook command from settings
    */
   public getStartupHook(): string | undefined {
     return this.getUserSetting("startupHook");
   }
 
   /**
-   * Get instance hook command from user settings
+   * Get instance hook command from settings
    */
   public getInstanceHook(): string | undefined {
     return this.getUserSetting("instanceHook");
   }
 
   /**
-   * Get task approval hook command from user settings
+   * Get task approval hook command from settings
    * Used for validating all task operations (start/transition/stop)
    */
   public getTaskApprovalHook(): string | undefined {
@@ -395,14 +182,14 @@ export class SettingsManager {
   }
 
   /**
-   * Get tool approval hook command from user settings
+   * Get tool approval hook command from settings
    */
   public getToolApprovalHook(): string | undefined {
     return this.getUserSetting("toolApprovalHook");
   }
 
   /**
-   * Get persona hook command from user settings
+   * Get persona hook command from settings
    */
   public getPersonaHook(): string | undefined {
     return this.getUserSetting("personaHook");
@@ -416,7 +203,7 @@ export class SettingsManager {
   }
 
   /**
-   * Get mood hook command from user settings
+   * Get mood hook command from settings
    */
   public getMoodHook(): string | undefined {
     return this.getUserSetting("moodHook");
@@ -430,35 +217,35 @@ export class SettingsManager {
   }
 
   /**
-   * Get postUserInput hook command from user settings
+   * Get postUserInput hook command from settings
    */
   public getPostUserInputHook(): string | undefined {
     return this.getUserSetting("postUserInputHook");
   }
 
   /**
-   * Get preLLMResponse hook command from user settings
+   * Get preLLMResponse hook command from settings
    */
   public getPreLLMResponseHook(): string | undefined {
     return this.getUserSetting("preLLMResponseHook");
   }
 
   /**
-   * Get postLLMResponse hook command from user settings
+   * Get postLLMResponse hook command from settings
    */
   public getPostLLMResponseHook(): string | undefined {
     return this.getUserSetting("postLLMResponseHook");
   }
 
   /**
-   * Get preToolCall hook command from user settings
+   * Get preToolCall hook command from settings
    */
   public getPreToolCallHook(): string | undefined {
     return this.getUserSetting("preToolCallHook");
   }
 
   /**
-   * Get postToolCall hook command from user settings
+   * Get postToolCall hook command from settings
    */
   public getPostToolCallHook(): string | undefined {
     return this.getUserSetting("postToolCallHook");
@@ -491,7 +278,7 @@ export class SettingsManager {
   }
 
   /**
-   * Get context view helper command from user settings
+   * Get context view helper command from settings
    * Auto-detects GUI vs text-only environment
    */
   public getContextViewHelper(): string {
@@ -531,7 +318,7 @@ export class SettingsManager {
   }
 
   /**
-   * Get context edit helper command from user settings
+   * Get context edit helper command from settings
    * Auto-detects GUI vs text-only environment
    */
   public getContextEditHelper(): string {
@@ -571,7 +358,7 @@ export class SettingsManager {
   }
 
   /**
-   * Get base URL from user settings or environment
+   * Get base URL from settings or environment
    */
   public getBaseURL(): string {
     // First check environment variable
@@ -580,13 +367,13 @@ export class SettingsManager {
       return envBaseURL;
     }
 
-    // Then check user settings, then use default
+    // Then check settings, then use default
     const userBaseURL = this.getUserSetting("baseURL");
-    return userBaseURL || DEFAULT_USER_SETTINGS.baseURL || "https://api.x.ai/v1";
+    return userBaseURL || DEFAULT_SETTINGS.baseURL || "https://api.x.ai/v1";
   }
 
   /**
-   * Get temperature from user settings
+   * Get temperature from settings
    * Defaults to 0.7 if not set
    */
   public getTemperature(): number {
@@ -598,12 +385,12 @@ export class SettingsManager {
   }
 
   /**
-   * Get max tokens from user settings or environment
-   * Priority: user settings > ZDS_AI_AGENT_MAX_TOKENS env var > undefined
+   * Get max tokens from settings or environment
+   * Priority: settings > ZDS_AI_AGENT_MAX_TOKENS env var > undefined
    * Returns undefined if not set (allows API to use its default)
    */
   public getMaxTokens(): number | undefined {
-    // First check user settings
+    // First check settings
     const settingsMaxTokens = this.getUserSetting("maxTokens");
     if (settingsMaxTokens !== undefined && Number.isInteger(settingsMaxTokens) && settingsMaxTokens > 0) {
       return settingsMaxTokens;
@@ -621,34 +408,41 @@ export class SettingsManager {
     return undefined; // No default - let API decide
   }
 
-  public loadVariableDefinitions(): any[] {
-    try {
-      if (!fs.existsSync(this.userVarsPath)) return [];
-
-      const fileContents = fs.readFileSync(this.userVarsPath, 'utf8');
-      const data = yaml.load(fileContents) as { variables: any[] };
-
-      if (!data || !Array.isArray(data.variables)) {
-        console.error(`Invalid cli-vars.yml format in ${this.userVarsPath}: expected { variables: [...] }`);
-        return [];
-      }
-
-      return data.variables;
-    } catch (error) {
-      console.error(`Error loading ${this.userVarsPath}: ${error}`);
-      return [];
-    }
-  }
-
   /**
-   * Ensure directory exists for a given file path
+   * Load variable definitions from the tiered bot-vars.yml (see ticket #4).  Each tier's
+   * variables array is concatenated (later tiers appended after earlier ones); prompt-variables.ts
+   * is responsible for resolving duplicate names by first-match-wins or similar, matching the
+   * existing single-file behavior when only one tier defines the file.
    */
-  private ensureDirectoryExists(filePath: string): void {
-    const dir = path.dirname(filePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, {recursive: true, mode: 0o700});
+  public loadVariableDefinitions(): any[] {
+    const tierPaths = resolveVarsTierPaths();
+    const allVariables: any[] = [];
+
+    for (const tierPath of tierPaths) {
+      try {
+        const fileContents = fs.readFileSync(tierPath, "utf8");
+        const data = yaml.load(fileContents) as { variables: any[] };
+
+        if (!data || !Array.isArray(data.variables)) {
+          console.error(`Invalid bot-vars.yml format in ${tierPath}: expected { variables: [...] }`);
+          continue;
+        }
+
+        allVariables.push(...data.variables);
+      } catch (error) {
+        console.error(`Error loading ${tierPath}: ${error}`);
+      }
     }
+
+    return allVariables;
   }
+}
+
+const VARS_FILENAME = "bot-vars.yml";
+
+function resolveVarsTierPaths(): string[] {
+  // bot-vars.yml uses the same tier resolution as bot-settings.json/bot-mcp.json (#4).
+  return resolveConfigTierPaths(VARS_FILENAME);
 }
 
 /**

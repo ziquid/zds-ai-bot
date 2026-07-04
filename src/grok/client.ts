@@ -82,7 +82,7 @@ export interface LLMResponse {
 
 export class LLMClient {
   private client: OpenAI;
-  private currentModel: string = "grok-code-fast-1";
+  private currentModel: string = "grok-4-3";
   private defaultMaxTokens: number;
   private backendName: string;
   private supportsTools: boolean = true;
