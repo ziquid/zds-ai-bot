@@ -1,6 +1,6 @@
-# grok-cli Test Suite
+# zds-bot Test Suite
 
-This directory contains test scripts for validating grok-cli features.
+This directory contains test scripts for validating zds-bot features.
 
 ## Test Scripts
 
