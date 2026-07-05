@@ -34,7 +34,7 @@ export class GrokResponsesClient {
     });
     const envMax = Number(process.env.GROK_MAX_TOKENS);
     this.defaultMaxTokens = Number.isFinite(envMax) && envMax > 0 ? envMax : 1536;
-    this.currentModel = model || "grok-4-3";
+    this.currentModel = model || "grok-4.3";
 
     if (displayName) {
       this.backendName = displayName;

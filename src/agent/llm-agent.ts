@@ -370,7 +370,7 @@ export class LLMAgent extends EventEmitter {
    *
    * @param apiKey - API key for the LLM service
    * @param baseURL - Optional base URL for the API endpoint
-   * @param model - Optional model name (defaults to saved model or "grok-4-3")
+   * @param model - Optional model name (defaults to saved model or "grok-4.3")
    * @param maxToolRounds - Maximum number of tool execution rounds (default: 400)
    * @param debugLogFile - Optional path for MCP debug logging
    * @param startupHookOutput - Optional output from startup hook execution
@@ -391,7 +391,7 @@ export class LLMAgent extends EventEmitter {
     super();
     const manager = getSettingsManager();
     const savedModel = manager.getCurrentModel();
-    const modelToUse = model || savedModel || "grok-4-3";
+    const modelToUse = model || savedModel || "grok-4.3";
     this.maxToolRounds = maxToolRounds || 400;
     this.temperature = temperature ?? manager.getTemperature();
     this.maxTokens = maxTokens ?? manager.getMaxTokens();
