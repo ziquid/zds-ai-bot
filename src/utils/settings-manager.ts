@@ -12,7 +12,6 @@ export interface BotSettings {
   baseURL?: string; // API base URL
   defaultModel?: string; // User's preferred default model
   model?: string; // Current/project model override
-  models?: string[]; // Available models list
   temperature?: number; // Default temperature for API requests (0.0-2.0, default: 0.7)
   maxTokens?: number; // Default max tokens for API responses (no upper limit, default: undefined = API default)
   startupHook?: string; // Command to run at startup (new sessions only), output added to system prompt
@@ -49,7 +48,6 @@ const MCP_FILENAME = "bot-mcp.json";
 const DEFAULT_SETTINGS: Partial<BotSettings> = {
   baseURL: "https://api.x.ai/v1", // Grok default
   defaultModel: "grok-4.3",
-  models: ["grok-4.3", "grok-code-fast-1", "grok-4-1-latest", "grok-3-latest", "grok-3-fast", "grok-3-mini-fast"],
   model: "grok-4.3",
 };
 
@@ -135,14 +133,6 @@ export class SettingsManager {
     }
 
     return DEFAULT_SETTINGS.model || "grok-4.3";
-  }
-
-  /**
-   * Get available models list
-   */
-  public getAvailableModels(): string[] {
-    const models = this.getUserSetting("models");
-    return models || DEFAULT_SETTINGS.models || [];
   }
 
   /**

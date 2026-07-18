@@ -430,42 +430,24 @@ export async function processSlashCommand(
   }
 
   // /models <model> command with argument
+  // No whitelist validation here -- model name validity is backend-specific and the bot
+  // is multi-backend, so we trust the caller and let the API itself reject an unknown model.
   if (trimmedInput.startsWith("/models ")) {
     const modelArg = trimmedInput.split(" ")[1];
-    const { loadModelConfig } = await import("./model-config.js");
-    const availableModels = loadModelConfig();
-    const modelNames = availableModels.map((m) => m.model);
+    agent.setModel(modelArg);
 
-    if (modelNames.includes(modelArg)) {
-      agent.setModel(modelArg);
+    const confirmText = `✓ Switched to model: ${modelArg}`;
 
-      const confirmText = `✓ Switched to model: ${modelArg}`;
-
-      if (isHeadless) {
-        console.log(confirmText);
-      } else {
-        const confirmEntry: ChatEntry = {
-          type: "assistant",
-          content: confirmText,
-          timestamp: new Date(),
-        };
-        addChatEntry(confirmEntry);
-        if (clearInput) clearInput();
-      }
+    if (isHeadless) {
+      console.log(confirmText);
     } else {
-      const errorText = `Invalid model: ${modelArg}\n\nAvailable models: ${modelNames.join(", ")}`;
-
-      if (isHeadless) {
-        console.error(errorText);
-      } else {
-        const errorEntry: ChatEntry = {
-          type: "assistant",
-          content: errorText,
-          timestamp: new Date(),
-        };
-        addChatEntry(errorEntry);
-        if (clearInput) clearInput();
-      }
+      const confirmEntry: ChatEntry = {
+        type: "assistant",
+        content: confirmText,
+        timestamp: new Date(),
+      };
+      addChatEntry(confirmEntry);
+      if (clearInput) clearInput();
     }
 
     return true;
