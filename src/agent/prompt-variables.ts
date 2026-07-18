@@ -565,24 +565,18 @@ const INTRINSIC_VARS: VariableDef[] = [
 ];
 
 /**
- * Load variable definitions from the tiered bot-vars.yml (see config-tiers.ts) via SettingsManager
- * Lazy-loaded to avoid creating SettingsManager singleton at import time
+ * Load variable definitions from the tiered bot-vars.yml (see config-tiers.ts) via SettingsManager.
+ * Re-reads the tiers on every call (not cached) so the PWD tier stays current across chdir()
+ * -- SettingsManager.loadVariableDefinitions() itself always re-resolves process.cwd().
  */
-let _externalVarsLoaded = false;
-let _externalVars: VariableDef[] = [];
-
 function loadVariableDefinitions(): VariableDef[] {
-  if (!_externalVarsLoaded) {
-    _externalVarsLoaded = true;
-    try {
-      const settingsManager = SettingsManager.getInstance();
-      const varDefs = settingsManager.loadVariableDefinitions();
-      _externalVars = varDefs.map(varDef => new VariableDef(varDef));
-    } catch (error) {
-      _externalVars = [];
-    }
+  try {
+    const settingsManager = SettingsManager.getInstance();
+    const varDefs = settingsManager.loadVariableDefinitions();
+    return varDefs.map(varDef => new VariableDef(varDef));
+  } catch (error) {
+    return [];
   }
-  return _externalVars;
 }
 
 /**

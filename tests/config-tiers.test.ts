@@ -142,4 +142,43 @@ describe('config-tiers', () => {
     const merged = loadTieredJsonConfig<any>('bot-settings.json');
     expect(merged.defaultModel).toBe('forced-model');
   });
+
+  describe('PWD tier re-evaluation after chdir (zds-bot #33)', () => {
+    it('bot-settings.json picks up a directory-local PWD-tier file after a real process.chdir(), not just at first load', () => {
+      process.env.ZDS_AI_ROOT = path.join(tmpRoot, 'zds-ai-root');
+      const dirA = path.join(tmpRoot, 'dir-a');
+      const dirB = path.join(tmpRoot, 'dir-b');
+      writeJson(path.join(dirA, '.zds-ai'), 'bot-settings.json', { defaultModel: 'model-from-dir-a' });
+      writeJson(path.join(dirB, '.zds-ai'), 'bot-settings.json', { defaultModel: 'model-from-dir-b' });
+
+      process.chdir(dirA);
+      expect(loadTieredJsonConfig<any>('bot-settings.json').defaultModel).toBe('model-from-dir-a');
+
+      // Simulate the bot's `cd` tool changing directories mid-session (src/tools/zsh.ts chdir()).
+      process.chdir(dirB);
+      expect(loadTieredJsonConfig<any>('bot-settings.json').defaultModel).toBe('model-from-dir-b');
+    });
+
+    it('bot-mcp.json picks up a directory-local PWD-tier file after a real process.chdir(), not just at first load', () => {
+      process.env.ZDS_AI_ROOT = path.join(tmpRoot, 'zds-ai-root');
+      const dirA = path.join(tmpRoot, 'dir-a');
+      const dirB = path.join(tmpRoot, 'dir-b');
+      writeJson(path.join(dirA, '.zds-ai'), 'bot-mcp.json', {
+        mcpServers: { fromDirA: { name: 'fromDirA', transport: 'stdio', command: 'noop' } },
+      });
+      writeJson(path.join(dirB, '.zds-ai'), 'bot-mcp.json', {
+        mcpServers: { fromDirB: { name: 'fromDirB', transport: 'stdio', command: 'noop' } },
+      });
+
+      process.chdir(dirA);
+      let merged = loadTieredJsonConfig<any>('bot-mcp.json');
+      expect(merged.mcpServers.fromDirA).toBeDefined();
+      expect(merged.mcpServers.fromDirB).toBeUndefined();
+
+      process.chdir(dirB);
+      merged = loadTieredJsonConfig<any>('bot-mcp.json');
+      expect(merged.mcpServers.fromDirB).toBeDefined();
+      expect(merged.mcpServers.fromDirA).toBeUndefined();
+    });
+  });
 });
