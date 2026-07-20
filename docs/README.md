@@ -206,59 +206,64 @@ Add to `~/.zds-ai/cli-settings.json`:
 
 ## Configuration Files
 
-zai-cli uses two types of configuration files to manage settings:
+zds-bot merges `bot-settings.json` and `bot-mcp.json` across seven config tiers (lowest to highest
+priority): shipped defaults, global bot config dir (set via `$ZDS_AI_BOT_GLOBAL_CONFIG_DIR`; this
+tier is skipped entirely if unset -- no hardcoded default path), bot/agent config dir, project dir
+(`.zds-ai/`), task dir (`.zds-ai/`), current working directory (`.zds-ai/`), and forced overrides.
+A higher tier's key overrides the same key from a lower tier; keys a tier doesn't set fall through
+from lower tiers.  See `src/utils/config-tiers.ts` for the exact resolution order.
 
-### User-Level Settings (`~/.zds-ai/cli-settings.json`)
+### `bot-settings.json`
 
-This file stores **global settings** that apply across all projects.  These settings rarely change and include:
+Stores API key, base URL, default/current model, the available models list, temperature,
+max tokens, and hook commands.  Any tier's `bot-settings.json` can set any of these keys.
 
-- **API Key**: Your API key (works with any backend)
-- **Base URL**: API endpoint (determines which backend you use)
-- **Default Model**: Your preferred model (e.g., `grok-code-fast-1`)
-- **Available Models**: List of models you can use
-
-**Example:**
+**Example (e.g. a project-tier `.zds-ai/bot-settings.json`):**
 
 ```json
 {
   "apiKey": "your_api_key_here",
   "baseURL": "https://api.x.ai/v1",
-  "defaultModel": "grok-code-fast-1",
+  "defaultModel": "grok-4.3",
   "models": [
-    "grok-code-fast-1",
-    "grok-4-latest",
-    "grok-3-latest",
-    "grok-3-fast",
-    "grok-3-mini-fast"
-  ],
-  "startupHook": "date"
+    "grok-4.3",
+    "grok-build-0.1"
+  ]
 }
 
 ```
 
-#### Startup Hook
+A project- or task-level `bot-settings.json` (e.g. `.zds-ai/bot-settings.json` in your project
+directory) can override just the keys it cares about, such as `model`:
 
-You can configure a **startup hook** command that runs when zai-cli starts.  The output is automatically added to the system prompt, providing dynamic context about your environment.
+```json
+{
+  "model": "grok-build-0.1"
+}
+
+```
+
+#### Instance Hook
+
+You can configure an **instance hook** command that runs for every instance (new and resumed
+sessions).  Its output is parsed for commands (see [Hooks System](#hooks-system) below) and can
+set environment variables, switch models/backends, or add to the system prompt.
 
 **Example use cases:**
 
-- Show current date/time: `"startupHook": "date"`
-- Custom environment info: `"startupHook": "/path/to/your/script.sh"`
+- Show current date/time: `"instanceHook": "date"`
+- Custom environment info: `"instanceHook": "/path/to/your/script.sh"`
 
-The command runs with a 10-second timeout and the output appears in the AI's context before custom instructions.
+The command runs with a 10-second timeout.
 
-### Project-Level Settings (`.zds-ai/project-settings.json`)
+### `bot-mcp.json`
 
-This file stores **project-specific settings** in your current working directory.  It includes:
-
-- **Current Model**: The model currently in use for this project
-- **MCP Servers**: Model Context Protocol server configurations
+Stores MCP server configurations, resolved across the same seven tiers.
 
 **Example:**
 
 ```json
 {
-  "model": "grok-3-fast",
   "mcpServers": {
     "linear": {
       "name": "linear",
@@ -273,10 +278,9 @@ This file stores **project-specific settings** in your current working directory
 
 ### How It Works
 
-1. **Global Defaults**: User-level settings provide your default preferences
-1. **Project Override**: Project-level settings override defaults for specific projects
-1. **Directory-Specific**: When you change directories, project settings are loaded automatically
-1. **Fallback Logic**: Project model → User default model → System default (`grok-code-fast-1`)
+1. **Global Defaults**: The global tier provides your default preferences
+1. **Project/Task/PWD Override**: Lower-scoped tiers override defaults for specific projects, tasks, or directories
+1. **Fallback Logic**: PWD model → task model → project model → bot-config model → global model → default (`grok-4.3`)
 
 This means you can have different models for different projects while maintaining consistent global settings like your API key.
 
@@ -412,7 +416,7 @@ Add to `~/.zds-ai/cli-settings.json`:
 
 ```
 
-**Model Priority**: `--model` flag > `GROK_MODEL` environment variable > user default model > system default (grok-code-fast-1)
+**Model Priority**: `--model` flag > `ZDS_AI_MODEL` environment variable > user default model > system default (grok-4.3)
 
 ### Image Support
 
@@ -627,11 +631,10 @@ zai-cli includes a powerful hooks system for customizing behavior at various poi
 
 ### Configuring Hooks
 
-Add hooks to `~/.zds-ai/cli-settings.json` or `.zds-ai/project-settings.json`:
+Add hooks to any tier's `bot-settings.json` (e.g. `~/.zds-ai/bot-settings.json` or `.zds-ai/bot-settings.json` in your project directory):
 
 ```json
 {
-  "startupHook": "echo 'Session started'",
   "instanceHook": "/path/to/script.sh",
   "personaHook": "validate-persona.sh",
   "personaHookMandatory": true
@@ -642,7 +645,6 @@ Add hooks to `~/.zds-ai/cli-settings.json` or `.zds-ai/project-settings.json`:
 ### Available Hooks
 
 **Lifecycle Hooks:**
-- `startupHook` - Runs at session start, output added to system prompt
 - `instanceHook` - Runs for every instance (new and resumed sessions)
 
 **Operation Hooks:**

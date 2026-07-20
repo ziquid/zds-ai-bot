@@ -14,7 +14,6 @@ export interface BotSettings {
   model?: string; // Current/project model override
   temperature?: number; // Default temperature for API requests (0.0-2.0, default: 0.7)
   maxTokens?: number; // Default max tokens for API responses (no upper limit, default: undefined = API default)
-  startupHook?: string; // Command to run at startup (new sessions only), output added to system prompt
   instanceHook?: string; // Command to run for every instance (new and resumed sessions), output parsed for commands
   postUserInputHook?: string; // Command to run after each user input is received
   preLLMResponseHook?: string; // Command to run before each prompt is sent to the LLM
@@ -150,14 +149,7 @@ export class SettingsManager {
   }
 
   /**
-   * Get startup hook command from settings
-   */
-  public getStartupHook(): string | undefined {
-    return this.getUserSetting("startupHook");
-  }
-
-  /**
-   * Get instance hook command from settings
+   * Get instance hook command from user settings
    */
   public getInstanceHook(): string | undefined {
     return this.getUserSetting("instanceHook");

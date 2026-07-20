@@ -373,7 +373,6 @@ export class LLMAgent extends EventEmitter {
    * @param model - Optional model name (defaults to saved model or "grok-4.3")
    * @param maxToolRounds - Maximum number of tool execution rounds (default: 400)
    * @param debugLogFile - Optional path for MCP debug logging
-   * @param startupHookOutput - Optional output from startup hook execution
    * @param temperature - Optional temperature for API requests (0.0-2.0)
    * @param maxTokens - Optional maximum tokens for API responses
    */
@@ -383,7 +382,6 @@ export class LLMAgent extends EventEmitter {
     model?: string,
     maxToolRounds?: number,
     debugLogFile?: string,
-    startupHookOutput?: string,
     temperature?: number,
     maxTokens?: number,
     isHeadless?: boolean
@@ -523,12 +521,8 @@ export class LLMAgent extends EventEmitter {
 
     // Note: THE system prompt is NOT added to chatHistory
     // Only conversational system messages go in chatHistory
-
-    // Store startup hook output for later use
-    this.startupHookOutput = startupHookOutput;
   }
 
-  private startupHookOutput?: string;
   private systemPrompt: string = "Initializing..."; // THE system prompt (always at messages[0])
   private hasRunInstanceHook: boolean = false;
 
@@ -2381,7 +2375,7 @@ export class LLMAgent extends EventEmitter {
    * - Backs up current conversation to timestamped files
    * - Clears chat history and messages
    * - Resets context warnings and processing flags
-   * - Re-executes startup and instance hooks
+   * - Re-executes the instance hook
    * - Saves the cleared state
    * - Emits context change events
    *
@@ -2389,7 +2383,6 @@ export class LLMAgent extends EventEmitter {
    */
   async clearCache(): Promise<void> {
     const { ChatHistoryManager } = await import("../utils/chat-history-manager.js");
-    const { executeStartupHook } = await import("../utils/startup-hook.js");
     const { executeOperationHook, applyHookCommands } = await import("../utils/hook-executor.js");
     const historyManager = ChatHistoryManager.getInstance();
 
@@ -2414,11 +2407,7 @@ export class LLMAgent extends EventEmitter {
     });
 
     try {
-      // Re-execute startup hook to get fresh output
-      this.startupHookOutput = await executeStartupHook();
-
-      // Reinitialize with system message and startup hook
-      // Instance hook runs automatically at end of initialize()
+      // Reinitialize with system message; instance hook runs automatically at end of initialize()
       await this.initialize();
     } catch (error) {
       console.error("Error during initialize() in clearCache():", error);

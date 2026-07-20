@@ -181,8 +181,8 @@ async function handleCommitAndPushHeadless(
   temperature?: number
 ): Promise<void> {
   try {
-    const { createLLMAgent } = await import('./utils/startup-hook.js');
-    const agent = await createLLMAgent(apiKey, baseURL, model, maxToolRounds, debugLogFile, true, temperature, undefined, true);
+    const { createLLMAgent } = await import('./utils/agent-factory.js');
+    const agent = await createLLMAgent(apiKey, baseURL, model, maxToolRounds, debugLogFile, temperature, undefined, true);
     currentAgent = agent; // Store reference for cleanup
 
     // Configure confirmation service for headless mode (auto-approve all operations)
@@ -317,8 +317,8 @@ async function processPromptHeadless(
   maxTokens?: number
 ): Promise<void> {
   try {
-    const { createLLMAgent } = await import('./utils/startup-hook.js');
-    const agent = await createLLMAgent(apiKey, baseURL, model, maxToolRounds, debugLogFile, true, temperature, maxTokens, true);
+    const { createLLMAgent } = await import('./utils/agent-factory.js');
+    const agent = await createLLMAgent(apiKey, baseURL, model, maxToolRounds, debugLogFile, temperature, maxTokens, true);
     currentAgent = agent; // Store reference for cleanup
 
     // Configure confirmation service for headless mode
@@ -671,16 +671,12 @@ program
       // Interactive mode: launch the plain-console REPL
 
       // Create agent for interactive mode only
-      const { createLLMAgent } = await import('./utils/startup-hook.js');
-      // Run startup hook for fresh sessions or when context doesn't have a system prompt
+      const { createLLMAgent } = await import('./utils/agent-factory.js');
       const { ChatHistoryManager } = await import('./utils/chat-history-manager.js');
       const historyManager = ChatHistoryManager.getInstance();
-      const loadedContext = options.fresh ? { systemPrompt: "", chatHistory: [] } : historyManager.loadContext();
-      const hasSystemPrompt = loadedContext.systemPrompt && loadedContext.systemPrompt.trim().length > 0;
-      const runStartupHook = !hasSystemPrompt; // Run hook if no system prompt exists
       const temperature = options.temperature ?? 0.7;
       const maxTokens = options.maxTokens ? parseInt(options.maxTokens) : undefined;
-      const agent = await createLLMAgent(apiKey, baseURL, model, maxToolRounds, options.debugLog, runStartupHook, temperature, maxTokens);
+      const agent = await createLLMAgent(apiKey, baseURL, model, maxToolRounds, options.debugLog, temperature, maxTokens);
       currentAgent = agent; // Store reference for cleanup
 
       // Configure confirmation service if auto-approve is enabled
